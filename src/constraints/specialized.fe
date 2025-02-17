@@ -1,5 +1,5 @@
 trait Trait {
-    fn f(self) -> i32
+    fn f(self) -> i3
 }
 
 struct S<T> {

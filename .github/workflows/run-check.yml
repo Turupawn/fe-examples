@@ -1,0 +1,22 @@
+name: Run check_all.sh
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+
+      - name: Run check_all.sh
+        run: |
+          chmod +x ./check_all.sh
+          ./check_all.sh

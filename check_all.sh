@@ -12,7 +12,7 @@ trap 'rm -f $temp_file' EXIT
 
 find "$directory" -type f -name "*.fe" | while read -r file; do
   echo "Checking: $file"
-  ./fe-driver2 "$file"
+  ./fe check "$file"
   echo $? >> "$temp_file"
   if [[ $? != 0 ]]; then
     echo "Not Good"

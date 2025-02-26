@@ -1,0 +1,135 @@
+mod std {
+    pub mod evm {
+        pub type Address = u256
+        pub struct Wei { value: usize }
+        pub struct Ptr { pub location: usize }
+        pub struct Buf { pub offset: Ptr, pub len: usize }
+        const HASH_SCRATCH_OFFSET: u256 = 0x0
+        extern {
+            pub fn __call(gas: Wei, address: Address, value: Wei, args: Buf, ret: Buf)
+            pub fn __mstore(_ loc: u256, _ data: u256)
+            pub fn __mload(_ loc: u256) -> u256
+            pub fn __keccak256(args: Buf) -> u256
+            pub fn __caller() -> Address
+            pub fn __revert()
+        }
+
+        pub fn alloc(len: usize) -> Buf {
+
+            let offset : usize// = __mload(0x40) // 0
+            let len : usize//= __mload(0x40) // 0
+                // ...
+            let x = Buf { offset: Ptr { location: offset }, len: len}
+            x
+        }
+    }
+}
+
+pub trait Decode {
+    fn decode(data: u256) -> Self
+}
+
+pub trait Encode {
+    fn encode(data: u256) -> Self
+    fn encode_size() -> usize
+}
+
+impl Decode for u256 {
+    fn decode(data: u256) -> u256 {
+        std::evm::__mload(data)  // Load the u256 value from storage
+    }
+}
+
+impl Encode for u256 {
+    fn encode(data: u256) -> u256 {
+        std::evm::__mload(data)  // Load the u256 value from storage
+    }
+    fn encode_size() -> usize {
+        32
+    }
+}
+
+impl Decode for (u256, u256) {
+    fn decode(data: u256) -> (u256, u256) {
+        let x =std::evm::__mload(data)  // Load the u256 value from storage
+        (x,x)   
+    }
+}
+
+impl Encode for (u256, u256) {
+    fn encode(data: u256) -> (u256, u256) {
+        let x =std::evm::__mload(data)  // Load the u256 value from storage
+        (x,x)
+    }
+    fn encode_size() -> usize {
+        32
+    }
+}
+
+impl<T, U> Map<T, U>
+    where T: Encode, U: Decode
+{
+    pub fn get(self, _ key: T) -> U {
+        let buffer = std::evm::alloc(len: T::encode_size())
+        let x : u256 = std::evm::__keccak256(args: buffer)
+        let mut y : U
+        //y = x.into()
+        y
+    }
+
+    pub fn set(self, _ key: T, _ value: U) {
+    }
+}
+
+struct Map<T, U> {
+    slot: u8,
+}
+
+contract ERC20 {
+    pub balance: Map<std::evm::Address, u256>,
+    pub allowance: Map<(std::evm::Address, std::evm::Address), std::evm::Address>,
+    pub TOTAL_SUPPLY: u256
+}
+
+impl ERC20 {
+    pub fn constructor(mut self) {
+        self.TOTAL_SUPPLY = 21_000_000 * 1**18
+        self.balance.set(std::evm::__caller(), self.TOTAL_SUPPLY)
+    }
+
+    pub fn totalSupply(self) -> u256 {
+        self.TOTAL_SUPPLY
+    }
+
+    pub fn balanceOf(self, account : std::evm::Address) -> u256 {
+        self.balance.get(account)
+    }
+
+    pub fn transfer(mut self, to : std::evm::Address, value : u256) -> bool {
+        if self.balance.get(std::evm::__caller()) < value {
+            std::evm::__revert()
+        }
+        self.balance.set(std::evm::__caller(), self.balance.get(std::evm::__caller()) - value)
+        self.balance.set(to, self.balance.get(to) + value)
+        true
+    }
+
+    pub fn allowance(self, owner : std::evm::Address, spender : std::evm::Address) -> u256 {
+        self.allowance.get((owner, spender))
+    }
+
+    pub fn approve(mut self, spender : std::evm::Address, value : u256) -> bool {
+        self.allowance.set((std::evm::__caller(), spender), value)
+        true
+    }
+
+    pub fn transferFrom(mut self, from : std::evm::Address, to : std::evm::Address, value : u256) -> bool {
+        if (self.allowance.get((from, std::evm::__caller())) < value || self.balance.get(from) < value) {
+            std::evm::__revert()
+        }
+        self.allowance.set((from, std::evm::__caller()), self.allowance.get((from, std::evm::__caller())) - value)
+        self.balance.set(from, self.balance.get(from) - value)
+        self.balance.set(to, self.balance.get(to) + value)
+        true
+    }
+}

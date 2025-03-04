@@ -15,9 +15,9 @@ mod std {
         }
 
         pub fn alloc(len: usize) -> Buf {
-
-            let offset : usize// = __mload(0x40) // 0
-            let len : usize//= __mload(0x40) // 0
+            // TODO: initialize the free memory pointer
+            let offset : usize //= __mload(0x40) as usize // 0
+            let len : usize //= __mload(0x40) // 0
                 // ...
             let x = Buf { offset: Ptr { location: offset }, len: len}
             x
@@ -62,7 +62,7 @@ impl Encode for (u256, u256) {
         (x,x)
     }
     fn encode_size() -> usize {
-        32
+        64
     }
 }
 
@@ -70,11 +70,32 @@ impl<T, U> Map<T, U>
     where T: Encode, U: Decode
 {
     pub fn get(self, _ key: T) -> U {
-        let buffer = std::evm::alloc(len: T::encode_size())
-        let x : u256 = std::evm::__keccak256(args: buffer)
-        let mut y : U
-        //y = x.into()
-        y
+        let slot_size : usize = 32
+        let allocated_buffer = std::evm::alloc(len: T::encode_size() + slot_size)
+        let key_encoded : u256// = T::encode(key)
+        let mut location : u256// = allocated_buffer.offset.location
+        let _slot : u256// = self.slot.as_u256()
+        let value_encoded : u256// = U::encode(value)
+        
+        std::evm::__mstore(location, key_encoded)
+        location += 32
+        std::evm::__mstore(location, _slot)
+
+        let location_usize : usize// = location as usize TODO
+        let value_location : u256 = std::evm::__keccak256(
+            args: std::evm::Buf {
+                offset: std::evm::Ptr {
+                    location: location_usize
+                },
+                len: slot_size + T::encode_size()
+            }
+        )
+
+        location += 32
+        std::evm::__mstore(location, value_encoded)
+
+        let mut _return_value : U// = return_value.into() // TODO: convert to U
+        _return_value
     }
 
     pub fn set(self, _ key: T, _ value: U) {
@@ -88,13 +109,29 @@ struct Map<T, U> {
 contract ERC20 {
     pub balance: Map<std::evm::Address, u256>,
     pub allowance: Map<(std::evm::Address, std::evm::Address), std::evm::Address>,
-    pub TOTAL_SUPPLY: u256
+    pub TOTAL_SUPPLY: u256,
+    pub NAME: String<20>,
+    pub SYMBOL: String<5>,
+    pub DECIMALS: u8
 }
 
 impl ERC20 {
     pub fn constructor(mut self) {
+        // TODO: use native constructor
         self.TOTAL_SUPPLY = 21_000_000 * 1**18
         self.balance.set(std::evm::__caller(), self.TOTAL_SUPPLY)
+    }
+
+    pub fn name(self) -> String<20> {
+        self.NAME
+    }
+
+    pub fn symbol(self) -> String<5> {
+        self.SYMBOL
+    }
+
+    pub fn decimals(self) -> u8 {
+        self.DECIMALS
     }
 
     pub fn totalSupply(self) -> u256 {

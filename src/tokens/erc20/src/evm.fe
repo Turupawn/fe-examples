@@ -1,0 +1,36 @@
+        const HASH_SCRATCH_OFFSET: u256 = 0x0
+        const SLOT_SIZE: usize = 32
+        pub type Address = u256
+        pub struct Wei { value: usize }
+        pub struct Ptr { pub location: usize }
+        pub struct Buf { pub offset: Ptr, pub len: usize }
+
+        impl Buf {
+            pub fn write_word(mut self, _ w: u256) {
+                __mstore(self.offset, w)
+            }
+        }
+
+        // TODO: how to declare dynamic array?
+        pub struct StorageWords { pub values: [u256; 10], pub length: usize }
+        pub struct WordSlice { pub offset: usize, pub length: usize }
+        extern {
+            pub fn todo() -> !
+            pub fn __call(gas: Wei, address: Address, value: Wei, args: Buf, ret: Buf)
+            pub fn __mload(_ storage_slice: WordSlice) -> StorageWords
+            pub fn __sload(_ storage_slice: WordSlice) -> StorageWords
+            pub fn __mstore(_ loc: u256, storage_words: StorageWords) // TODO: use StorageWords
+            pub fn __sstore(_ loc: u256, _ data: u256) // TODO: use StorageWords
+            pub fn __keccak256(args: Buf) -> u256 // TODO: Should this use WordSlice?
+            pub fn __caller() -> Address
+            pub fn __revert()
+            //pub fn __sstore2(_ loc: StoragePtr, _ data: &[u8])
+        }
+
+        pub fn alloc(len: usize) -> Buf {
+            // TODO: initialize the free memory pointer
+            let free_memory_pointer : StorageWords = __mload(WordSlice { offset: 0x40, length: 1 })
+            // TODO: can I use extern functions here?
+            let free_memory_pointer_location : usize //= u256_as_usize(free_memory_pointer.values[0])
+            Buf { offset: Ptr { location: free_memory_pointer_location }, len: 1}
+        }

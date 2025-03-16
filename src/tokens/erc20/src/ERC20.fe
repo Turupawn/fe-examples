@@ -1,0 +1,267 @@
+// TODO: how include from different files?
+extern {
+    // TODO: is it possible to use the same name for different functions?
+    fn usize_as_u256(_ value: usize) -> u256
+    fn u8_as_u256(_ value: u8) -> u256
+    fn u256_as_usize(_ value: u256) -> usize
+    fn todo() -> !
+}
+
+use ingot::evm
+use ingot::Foo
+
+trait IntUpcast<To> {
+    fn upcast(self) -> To
+}
+
+impl IntUpcast<u256> for u8 {
+    fn upcast(self) -> u256 {
+        todo()
+    }
+}
+
+trait IntDowncast<To> {
+    fn downcast_truncate(self) -> To
+    fn downcast_saturate(self) -> To
+    // fn downcast(self) -> Option<To> // Option is in core lib, which isn't visible in lsp (see grant's PR)
+}
+
+impl IntDowncast<u8> for u256 {
+    fn downcast_truncate(self) -> u8 {
+        todo()
+    }
+    fn downcast_saturate(self) -> u8 {
+        todo()
+    }
+}
+
+fn example() {
+    let x: u8 = 10
+    let y: u256 = x.upcast()
+    let z: u8 = y.downcast_truncate()
+    let w: u8 = y.downcast_saturate()
+}
+
+trait Buffer {
+    fn write_word(mut self, offset: u256, _ w: u256)
+    fn read_word(mut self, offset: u256) -> u256
+}
+
+pub struct MemBuffer { ptr: Ptr, len: u256 }
+impl Buffer for MemBuffer {
+    fn write_word(mut self, offset: u256, _ w: u256) {
+        let f = Foo { x: 10 }
+        __mstore(self.ptr + offset, w)
+    }
+}
+pub struct StorageBuffer {}
+pub struct Cursor<B: Buffer> {
+    inner: B,
+    pos: u256
+}
+
+impl<B: Buffer> Write for Cursor<B> {
+    fn write_word(mut self, _ w: u256) {
+        // TODO: check for out-of-bounds
+        self.inner.write_word(offset: self.pos, w)
+        self.pos += 32
+    }
+}
+
+pub trait Decode {evm
+    fn decode(words: evm::StorageWords) -> Self
+    fn decode_size() -> usize
+}
+
+pub trait Encode {
+    fn encode<W: Write>(self, mut _ w: W)
+    fn encode_size() -> usize
+}
+
+impl Decode for u256 {
+    fn decode(words: evm::StorageWords) -> u256 {
+        words.values[0]
+    }
+    fn decode_size() -> usize {
+        32
+    }
+}
+
+impl Encode for u256 {
+    fn encode<W: Write>(self, mut _ w: W) {
+        w.write_word(self)
+    }
+    fn encode_size() -> usize {
+        32
+    }
+}
+
+impl<A: Decode, B: Decode, R: Read> Decode for (A, B) {
+    fn decode(_ r: Read) -> (A, B) {
+        (A::decode(r), B::decode(r))
+    }
+    fn decode_size() -> usize {
+        A::decode_size() + B::decode_size()
+    }
+}
+
+impl<A: Decode, B: Decode, C: Decode, R: Read> Decode for (A, B, C) {
+    fn decode(_ r: Read) -> (A, B, C) {
+        (A::decode(r), B::decode(r), C::decode(r))
+    }
+    fn decode_size() -> usize {
+        A::decode_size() + B::decode_size() + C::decode_size()
+    }
+}
+
+
+struct AccountInfo {
+    addr: Address,
+    balance: u256,
+    z: Foo,
+}
+
+impl Decode for AccountInfo {
+    fn decode<R: Read>(_ r: R) -> Self {
+        Self {
+            x: Address::decode(r),
+            y: u256::decode(r),
+            z: Foo::decode(r),
+        }
+    }
+}
+
+
+trait Write {
+    fn write_word(mut self, _ w: u256)
+}
+
+impl Write for MemBuf {}
+impl Write for StorageBuf {}
+
+impl Encode for (u256, u256) {
+    fn encode<W: Write>(self, mut _ w: W) {
+        w.write_word(self.0)
+        w.write_word(self.1)
+    }
+    fn encode_size() -> usize {
+        64
+    }
+}
+
+impl<T, U> Map<T, U>
+    where T: Encode, U: Decode
+{
+    pub fn get(self, key: T) -> U {
+        // allocate memory for the key and the slot and encode the key
+        let allocated_buffer = std::evm::alloc(len: T::encode_size() + std::evm::SLOT_SIZE)
+        let key_encoded : std::evm::StorageWords = T::encode()
+
+        let mut key_cursor = Cursor::new(allocated_buffer)
+        slot.encode(key_cursor)
+        key.encode(key_cursor)
+
+        // store the key and the slot in the allocated memory
+        std::evm::__mstore(location: usize_as_u256(allocated_buffer.offset.location), storage_words: key_encoded)
+        std::evm::__mstore(
+            location: usize_as_u256(allocated_buffer.offset.location),
+            storage_words: std::evm::StorageWords {
+                values: [u8_as_u256(self.slot),0,0,0,0,0,0,0,0,0],
+                length: 1
+            }
+        )
+
+        // compute the location of the value by keccak256ing the key and the slot
+        let value_location : u256 = std::evm::__keccak256(
+            args: std::evm::Buf {
+                offset: std::evm::Ptr {
+                    location: allocated_buffer.offset.location
+                },
+                len: (key_encoded.length + 1) * std::evm::SLOT_SIZE
+            }
+        )
+
+        // load the value from the location
+        let storage_words : std::evm::StorageWords = std::evm::__sload(
+            std::evm::WordSlice {
+                offset: u256_as_usize(value_location),
+                length: U::decode_size()
+            }
+        )
+        let return_value : U = U::decode(words: storage_words)
+        return_value
+    }
+
+    pub fn set(self, _ key: T, _ value: U) {
+    }
+}
+
+struct Map<T, U> {
+    // TODO: should slot be u256?
+    slot: u8,
+}
+
+contract ERC20 {
+    pub balance: Map<std::evm::Address, u256>,
+    pub allowance: Map<(std::evm::Address, std::evm::Address), std::evm::Address>,
+    pub TOTAL_SUPPLY: u256,
+    pub NAME: String<20>,
+    pub SYMBOL: String<5>,
+    pub DECIMALS: u8
+}
+
+impl ERC20 {
+    pub fn constructor(mut self) {
+        // TODO: use native constructor
+        self.TOTAL_SUPPLY = 21_000_000 * 1**18
+        self.balance.set(std::evm::__caller(), self.TOTAL_SUPPLY)
+    }
+
+    pub fn name(self) -> String<20> {
+        self.NAME
+    }
+
+    pub fn symbol(self) -> String<5> {
+        self.SYMBOL
+    }
+
+    pub fn decimals(self) -> u8 {
+        self.DECIMALS
+    }
+
+    pub fn totalSupply(self) -> u256 {
+        self.TOTAL_SUPPLY
+    }
+
+    pub fn balanceOf(self, account : std::evm::Address) -> u256 {
+        self.balance.get(key: account)
+    }
+
+    pub fn transfer(mut self, to : std::evm::Address, value : u256) -> bool {
+        if self.balance.get(key: std::evm::__caller()) < value {
+            std::evm::__revert()
+        }
+        self.balance.set(key: std::evm::__caller(), self.balance.get(key: std::evm::__caller()) - value)
+        self.balance.set(key: to, self.balance.get(key: to) + value)
+        true
+    }
+
+    pub fn allowance(self, owner : std::evm::Address, spender : std::evm::Address) -> u256 {
+        self.allowance.get(key: (owner, spender))
+    }
+
+    pub fn approve(mut self, spender : std::evm::Address, value : u256) -> bool {
+        self.allowance.set((std::evm::__caller(), spender), value)
+        true
+    }
+
+    pub fn transferFrom(mut self, from : std::evm::Address, to : std::evm::Address, value : u256) -> bool {
+        if (self.allowance.get(key: (from, std::evm::__caller())) < value || self.balance.get(key: from) < value) {
+            std::evm::__revert()
+        }
+        self.allowance.set((from, std::evm::__caller()), self.allowance.get(key: (from, std::evm::__caller())) - value)
+        self.balance.set(from, self.balance.get(key: from) - value)
+        self.balance.set(to, self.balance.get(key: to) + value)
+        true
+    }
+}

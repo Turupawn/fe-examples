@@ -74,6 +74,7 @@ trait Write {
 
 impl Write for MemBuffer {
     fn write_word(mut self, _ w: u256) {
+        // Question: should we check bounds here instead of in the Buffer trait?
         if self.ptr.location.upcast() > self.len {
             evm::__revert()
         }
@@ -93,6 +94,7 @@ trait Read {
 
 impl Read for MemBuffer {
     fn read_word(mut self) -> u256 {
+        // Question: should we check bounds here instead of in the Buffer trait?
         if self.ptr.location.upcast() > self.len {
             evm::__revert()
         }

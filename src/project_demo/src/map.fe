@@ -123,7 +123,7 @@ pub trait Decode {
 }
 
 pub trait Encode {
-    fn encode<W: Write>(self, mut w: W) -> bool
+    fn encode<W: Write>(self, mut _ w: W) -> bool
     fn encode_size() -> usize
 }
 
@@ -137,7 +137,7 @@ impl Decode for u256 {
 }
 
 impl Encode for u256 {
-    fn encode<W: Write>(self, mut w: W) -> bool {
+    fn encode<W: Write>(self, mut _ w: W) -> bool {
         w.write_word(w: self)
     }
 
@@ -164,8 +164,8 @@ impl<T, U> Map<T, U>
             pos: 0
         }
 
-        key.encode(w: key_cursor)
-        self.slot.upcast().encode(w: key_cursor)
+        key.encode(key_cursor)
+        self.slot.upcast().encode(key_cursor)
 
         let value_slot : u256 = evm::__keccak256(args: allocated_buffer)
         
@@ -187,8 +187,8 @@ impl<T, U> Map<T, U>
             pos: 0
         }
 
-        key.encode(w: key_cursor)
-        self.slot.upcast().encode(w: key_cursor)
+        key.encode(key_cursor)
+        self.slot.upcast().encode(key_cursor)
 
         let value_slot : u256 = evm::__keccak256(args: allocated_buffer)
         let allocated_storage = evm::salloc(len: U::encode_size())
@@ -196,6 +196,6 @@ impl<T, U> Map<T, U>
             inner: StorageBuffer { ptr: allocated_storage, len: U::encode_size().upcast() },
             pos: value_slot
         }
-        value.encode(w: value_cursor)
+        value.encode(value_cursor)
     }
 }

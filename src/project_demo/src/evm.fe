@@ -24,7 +24,7 @@ extern {
     //pub fn __sstore2(_ loc: StoragePtr, _ data: &[u8])
 }
 
-pub fn alloc(len: usize) -> Buf {
+pub fn malloc(len: usize) -> Buf {
     // TODO: initialize the free memory pointer
     //let free_memory_pointer : StorageWords = __mload(WordSlice { offset: 0x40, length: 1 })
     // TODO: can I use extern functions here?
@@ -32,7 +32,7 @@ pub fn alloc(len: usize) -> Buf {
     Buf { offset: Ptr { location: free_memory_pointer_location }, len: 1}
 }
 
-pub fn alloc_storage(len: usize) -> Ptr {
+pub fn salloc(len: usize) -> Ptr {
     // TODO: initialize the free memory pointer
     //let free_memory_pointer : StorageWords = __mload(WordSlice { offset: 0x40, length: 1 })
     // TODO: can I use extern functions here?

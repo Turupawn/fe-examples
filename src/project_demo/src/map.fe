@@ -2,9 +2,15 @@ use ingot::evm
 
 // BUFFER
 
+pub struct BufferResult<T> {
+    value: T,
+    is_error: bool
+}
+
 trait Buffer {
-    fn write_word(mut self, offset: u256, _ w: u256)
-    fn read_word(mut self, offset: u256) -> u256
+    fn write_word(mut self, offset: u256, w: u256) -> bool
+    fn read_word(mut self, offset: u256) -> BufferResult<u256>
+    fn len(self) -> u256
 }
 
 // MEMORY BUFFER
@@ -12,98 +18,98 @@ trait Buffer {
 pub struct MemBuffer { ptr: evm::Ptr, len: u256 }
 
 impl Buffer for MemBuffer {
-    fn write_word(mut self, offset: u256, _ w: u256) {
+    fn write_word(mut self, offset: u256, w: u256) -> bool {
         evm::__mstore(self.ptr.location.upcast() + offset, w)
+        true
     }
-    fn read_word(mut self, offset: u256) -> u256 {
-        evm::__mload(self.ptr.location.upcast() + offset)
+    fn read_word(mut self, offset: u256) -> BufferResult<u256> {
+        let value = evm::__mload(self.ptr.location.upcast() + offset)
+        BufferResult { value: value, is_error: false }
+    }
+
+    fn len(self) -> u256 {
+        self.len
     }
 }
 
 // STORAGE BUFFER
 
-pub struct StorageBuffer {}
+pub struct StorageBuffer { ptr: evm::Ptr, len: u256 }
 
 impl Buffer for StorageBuffer {
-    fn write_word(mut self, offset: u256, _ w: u256) {
+    fn write_word(mut self, offset: u256, w: u256) -> bool {
         evm::__sstore(offset, w)
+        true
     }
-    fn read_word(mut self, offset: u256) -> u256 {
-        evm::__sload(offset)
+    fn read_word(mut self, offset: u256) -> BufferResult<u256> {
+        let value = evm::__sload(offset)
+        BufferResult { value: value, is_error: false }
+    }
+
+    fn len(self) -> u256 {
+        self.len
     }
 }
 
 // CURSOR
 
-// Question: should B be a generic or a Buffer?
 pub struct Cursor<B: Buffer> {
     inner: B,
     pos: u256
 }
 
-// CURSOR
-
 impl<B: Buffer> Write for Cursor<B> {
-    fn write_word(mut self, _ w: u256) {
-        // Question: should we check bounds here instead of in the Buffer trait?
-        //if self.pos > self.inner.len {
-        //    evm::__revert()
-        //}
+    fn write_word(mut self, w: u256) -> bool {
+        if self.pos > self.inner.len() {
+            return false
+        }
         self.inner.write_word(offset: self.pos, w)
         self.pos += 32
+        true
     }
 }
 
 impl<B: Buffer> Read for Cursor<B> {
-    fn read_word(mut self) -> u256 {
-        // Question: should we check bounds here instead of in the Buffer trait?
-        //if self.pos > self.inner.len {
-        //    evm::__revert()
-        //}
-        let word: u256 = self.inner.read_word(offset: self.pos)
+    fn read_word(mut self) -> BufferResult<u256> {
+        if self.pos > self.inner.len() {
+            return BufferResult { value: 0, is_error: true }
+        }
+        let word: u256 = self.inner.read_word(offset: self.pos).value
         self.pos += 32
-        return word
+        BufferResult { value: word, is_error: false }
     }
 }
 
 // WRITE
 
 trait Write {
-    fn write_word(mut self, _ w: u256)
+    fn write_word(mut self, w: u256) -> bool
 }
 
 impl Write for MemBuffer {
-    fn write_word(mut self, _ w: u256) {
-        // Question: should we check bounds here instead of in the Buffer trait?
-        if self.ptr.location.upcast() > self.len {
-            evm::__revert()
-        }
-        Buffer::write_word(self, offset: self.ptr.location.upcast(), w) 
+    fn write_word(mut self, w: u256) -> bool {
+        Buffer::write_word(self, offset: self.ptr.location.upcast(), w)
     }
 }
 
 impl Write for StorageBuffer {
-    fn write_word(mut self, _ w: u256) {
+    fn write_word(mut self, w: u256) -> bool {
         Buffer::write_word(self, offset: 0, w)
     }
 }
 
 trait Read {
-    fn read_word(mut self) -> u256
+    fn read_word(mut self) -> BufferResult<u256>
 }
 
 impl Read for MemBuffer {
-    fn read_word(mut self) -> u256 {
-        // Question: should we check bounds here instead of in the Buffer trait?
-        if self.ptr.location.upcast() > self.len {
-            evm::__revert()
-        }
+    fn read_word(mut self) -> BufferResult<u256> {
         Buffer::read_word(self, offset: 0)
     }
 }
 
 impl Read for StorageBuffer {
-    fn read_word(mut self) -> u256 {
+    fn read_word(mut self) -> BufferResult<u256> {
         Buffer::read_word(self, offset: 0)
     }
 }
@@ -117,13 +123,13 @@ pub trait Decode {
 }
 
 pub trait Encode {
-    fn encode<W: Write>(self, mut _ w: W)
+    fn encode<W: Write>(self, mut w: W) -> bool
     fn encode_size() -> usize
 }
 
 impl Decode for u256 {
     fn decode<R: Read>(mut r: R) -> u256 {
-        r.read_word()
+        r.read_word().value
     }
     fn decode_size() -> usize {
         32
@@ -131,9 +137,10 @@ impl Decode for u256 {
 }
 
 impl Encode for u256 {
-    fn encode<W: Write>(self, mut _ w: W) {
-        w.write_word(self)
+    fn encode<W: Write>(self, mut w: W) -> bool {
+        w.write_word(w: self)
     }
+
     fn encode_size() -> usize {
         32
     }
@@ -157,19 +164,20 @@ impl<T, U> Map<T, U>
             pos: 0
         }
 
-        key.encode(key_cursor)
-        self.slot.upcast().encode(key_cursor)
+        key.encode(w: key_cursor)
+        self.slot.upcast().encode(w: key_cursor)
 
         let value_slot : u256 = evm::__keccak256(args: allocated_buffer)
         
+        let allocated_storage = evm::alloc_storage(len: U::encode_size())
         let value_cursor = Cursor {
-            inner: StorageBuffer {},
+            inner: StorageBuffer { ptr: allocated_storage, len: U::encode_size().upcast() },
             pos: value_slot
         }
         U::decode(r: value_cursor)
     }
 
-    pub fn set(self, _ key: T, _ value: U) {
+    pub fn set(self, _ key: T, _ value: U) -> bool {
         let allocated_buffer = evm::alloc(len: T::encode_size() + evm::SLOT_SIZE)
         let mut key_cursor = Cursor { 
             inner: MemBuffer { 
@@ -179,14 +187,15 @@ impl<T, U> Map<T, U>
             pos: 0
         }
 
-        key.encode(key_cursor)
-        self.slot.upcast().encode(key_cursor)
+        key.encode(w: key_cursor)
+        self.slot.upcast().encode(w: key_cursor)
 
         let value_slot : u256 = evm::__keccak256(args: allocated_buffer)
+        let allocated_storage = evm::alloc_storage(len: U::encode_size())
         let value_cursor = Cursor {
-            inner: StorageBuffer {},
+            inner: StorageBuffer { ptr: allocated_storage, len: U::encode_size().upcast() },
             pos: value_slot
         }
-        value.encode(value_cursor)
+        value.encode(w: value_cursor)
     }
 }

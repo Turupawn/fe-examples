@@ -1,5 +1,42 @@
 use ingot::evm
 
+pub trait Hasher {
+    fn hash<T: Encode>(mut self, key: T) -> u256
+}
+
+pub struct Keccak256 {
+    slot: u256
+}
+
+impl Keccak256 {
+    pub fn new(slot: u256) -> Self {
+        Self { slot }
+    }
+}
+
+impl Hasher for Keccak256 {
+    fn hash<T: Encode>(mut self, key: T) -> u256 {
+        // Allocate buffer for slot + encoded key
+        let allocated_buffer = evm::malloc(len: 32 + T::encode_size())
+        let mut key_cursor = Cursor {
+            inner: MemBuffer {
+                ptr: allocated_buffer.offset,
+                len: allocated_buffer.len.upcast()
+            },
+            pos: 0
+        }
+
+        // Write both slot and key to the buffer
+        self.slot.encode(key_cursor)
+        key.encode(key_cursor)
+
+        // Hash the encoded data
+        let buf = evm::Buf { offset: allocated_buffer.offset, len: allocated_buffer.len }
+        let result: u256 = evm::__keccak256(args: buf)
+        result
+    }
+}
+
 // BUFFER
 
 pub struct BufferResult<T> {
@@ -146,28 +183,15 @@ impl Encode for u256 {
     }
 }
 
-struct Map<T, U> {
-    // Question: should this be u8 or u256?
-    slot: u8,
+struct Map<T, U, H: Hasher> {
+    hasher: H
 }
 
-impl<T, U> Map<T, U>
+impl<T, U, H: Hasher> Map<T, U, H>
     where T: Encode, U: Encode, U: Decode
 {
     pub fn get(self, key: T) -> U {
-        let allocated_buffer = evm::malloc(len: T::encode_size() + evm::SLOT_SIZE)
-        let mut key_cursor = Cursor { 
-            inner: MemBuffer { 
-                ptr: allocated_buffer.offset,
-                len: allocated_buffer.len.upcast()
-            },
-            pos: 0
-        }
-
-        key.encode(key_cursor)
-        self.slot.upcast().encode(key_cursor)
-
-        let value_slot : u256 = evm::__keccak256(args: allocated_buffer)
+        let value_slot: u256 = H::hash(self.hasher, key: key)
         
         let allocated_storage = evm::salloc(len: U::encode_size())
         let value_cursor = Cursor {
@@ -178,19 +202,7 @@ impl<T, U> Map<T, U>
     }
 
     pub fn set(self, _ key: T, _ value: U) -> bool {
-        let allocated_buffer = evm::malloc(len: T::encode_size() + evm::SLOT_SIZE)
-        let mut key_cursor = Cursor { 
-            inner: MemBuffer { 
-                ptr: allocated_buffer.offset,
-                len: allocated_buffer.len.upcast()
-            },
-            pos: 0
-        }
-
-        key.encode(key_cursor)
-        self.slot.upcast().encode(key_cursor)
-
-        let value_slot : u256 = evm::__keccak256(args: allocated_buffer)
+        let value_slot: u256 = H::hash(self.hasher, key: key)
         let allocated_storage = evm::salloc(len: U::encode_size())
         let value_cursor = Cursor {
             inner: StorageBuffer { ptr: allocated_storage, len: U::encode_size().upcast() },

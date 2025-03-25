@@ -1,0 +1,63 @@
+use ingot::evm
+use ingot::map
+
+pub struct Keccak256 {
+    pub slot: u256
+}
+
+impl Keccak256 {
+    pub fn new(slot: u256) -> Self {
+        Self { slot }
+    }
+}
+
+impl map::Hasher for Keccak256 {
+    fn hash<T: map::Encode>(mut self, key: T) -> u256 {
+        // Allocate buffer for slot + encoded key
+        let allocated_buffer = evm::malloc(len: 32 + T::encode_size())
+        let mut key_cursor = map::Cursor {
+            inner: map::MemBuffer {
+                ptr: allocated_buffer.offset,
+                len: allocated_buffer.len.upcast()
+            },
+            pos: 0
+        }
+
+        // Write both slot and key to the buffer
+        self.slot.encode(key_cursor)
+        key.encode(key_cursor)
+
+        // Hash the encoded data
+        let buf = evm::Buf { offset: allocated_buffer.offset, len: allocated_buffer.len }
+        let result: u256 = evm::__keccak256(args: buf)
+        result
+    }
+}
+
+pub struct SolidityHashMapStorage<T, U> {
+    value_slot: u256
+}
+
+impl<T, U> map::HashMapStorage<T, U> for SolidityHashMapStorage<T, U> 
+    where T: map::Encode, U: map::Encode, U: map::Decode
+{
+    fn get(mut self, _: T) -> U {
+        let allocated_storage = evm::salloc(len: U::encode_size())
+        let value_cursor = map::Cursor {
+            inner: map::StorageBuffer { ptr: allocated_storage, len: U::encode_size().upcast() },
+            pos: self.value_slot
+        }
+        U::decode(r: value_cursor)
+    }
+
+    fn set(mut self, _: T, _ value: U) -> bool {
+        let allocated_storage = evm::salloc(len: U::encode_size())
+        let value_cursor = map::Cursor {
+            inner: map::StorageBuffer { ptr: allocated_storage, len: U::encode_size().upcast() },
+            pos: self.value_slot
+        }
+        value.encode(value_cursor)
+    }
+}
+
+pub type mapping<T, U> = map::Map<T, U, Keccak256, SolidityHashMapStorage<T, U>>

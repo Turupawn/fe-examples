@@ -4,44 +4,11 @@ pub trait Hasher {
     fn hash<T: Encode>(mut self, key: T) -> u256
 }
 
-pub struct Keccak256 {
-    slot: u256
-}
-
-impl Keccak256 {
-    pub fn new(slot: u256) -> Self {
-        Self { slot }
-    }
-}
-
-impl Hasher for Keccak256 {
-    fn hash<T: Encode>(mut self, key: T) -> u256 {
-        // Allocate buffer for slot + encoded key
-        let allocated_buffer = evm::malloc(len: 32 + T::encode_size())
-        let mut key_cursor = Cursor {
-            inner: MemBuffer {
-                ptr: allocated_buffer.offset,
-                len: allocated_buffer.len.upcast()
-            },
-            pos: 0
-        }
-
-        // Write both slot and key to the buffer
-        self.slot.encode(key_cursor)
-        key.encode(key_cursor)
-
-        // Hash the encoded data
-        let buf = evm::Buf { offset: allocated_buffer.offset, len: allocated_buffer.len }
-        let result: u256 = evm::__keccak256(args: buf)
-        result
-    }
-}
-
 // BUFFER
 
 pub struct BufferResult<T> {
-    value: T,
-    is_error: bool
+    pub value: T,
+    pub is_error: bool
 }
 
 trait Buffer {
@@ -52,7 +19,7 @@ trait Buffer {
 
 // MEMORY BUFFER
 
-pub struct MemBuffer { ptr: evm::Ptr, len: u256 }
+pub struct MemBuffer { pub ptr: evm::Ptr, pub len: u256 }
 
 impl Buffer for MemBuffer {
     fn write_word(mut self, offset: u256, w: u256) -> bool {
@@ -71,7 +38,7 @@ impl Buffer for MemBuffer {
 
 // STORAGE BUFFER
 
-pub struct StorageBuffer { ptr: evm::Ptr, len: u256 }
+pub struct StorageBuffer { pub ptr: evm::Ptr, pub len: u256 }
 
 impl Buffer for StorageBuffer {
     fn write_word(mut self, offset: u256, w: u256) -> bool {
@@ -91,8 +58,8 @@ impl Buffer for StorageBuffer {
 // CURSOR
 
 pub struct Cursor<B: Buffer> {
-    inner: B,
-    pos: u256
+    pub inner: B,
+    pub pos: u256
 }
 
 impl<B: Buffer> Write for Cursor<B> {
@@ -183,31 +150,37 @@ impl Encode for u256 {
     }
 }
 
-struct Map<T, U, H: Hasher> {
-    hasher: H
+pub struct Map<T, U, H: Hasher, S: HashMapStorage<T, U>> {
+    pub hasher: H,
+    pub storage: S
 }
 
-impl<T, U, H: Hasher> Map<T, U, H>
+impl<T, U, H: Hasher, S: HashMapStorage<T, U>> HashMapStorage<T, U> for Map<T, U, H, S>
     where T: Encode, U: Encode, U: Decode
 {
-    pub fn get(self, key: T) -> U {
+    fn get(self, _ key: T) -> U {
         let value_slot: u256 = H::hash(self.hasher, key: key)
-        
-        let allocated_storage = evm::salloc(len: U::encode_size())
-        let value_cursor = Cursor {
-            inner: StorageBuffer { ptr: allocated_storage, len: U::encode_size().upcast() },
-            pos: value_slot
-        }
-        U::decode(r: value_cursor)
+        self.storage.get(key)
     }
 
-    pub fn set(self, _ key: T, _ value: U) -> bool {
+    fn set(self, _ key: T, _ value: U) -> bool {
         let value_slot: u256 = H::hash(self.hasher, key: key)
-        let allocated_storage = evm::salloc(len: U::encode_size())
-        let value_cursor = Cursor {
-            inner: StorageBuffer { ptr: allocated_storage, len: U::encode_size().upcast() },
-            pos: value_slot
-        }
-        value.encode(value_cursor)
+        self.storage.set(key, value)
     }
+}
+
+impl<T1: Encode, T2: Encode> Encode for (T1, T2) {
+    fn encode<W: Write>(self, mut _ w: W) -> bool {
+        let (v1, v2) = self
+        v1.encode(w) && v2.encode(w)
+    }
+
+    fn encode_size() -> usize {
+        T1::encode_size() + T2::encode_size()
+    }
+}
+
+pub trait HashMapStorage<T, U> {
+    fn get(mut self, _: T) -> U
+    fn set(mut self, _: T, _: U) -> bool
 }

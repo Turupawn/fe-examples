@@ -1,0 +1,67 @@
+use ingot::evm
+use ingot::map
+use ingot::solidity
+
+contract ERC20 {
+    pub balance: solidity::mapping<evm::Address, u256>,
+    pub allowance: solidity::mapping<(evm::Address, evm::Address), u256>,
+    pub TOTAL_SUPPLY: u256,
+    pub NAME: String<20>,
+    pub SYMBOL: String<5>,  
+    pub DECIMALS: u8
+}
+
+impl ERC20 {
+    pub fn constructor(mut self) {
+        self.TOTAL_SUPPLY = 21_000_000 * 10**18
+        let result = self.balance.set(key: evm::__caller(), value:self.TOTAL_SUPPLY)
+    }
+
+        pub fn name(self) -> String<20> {
+        self.NAME
+    }
+
+    pub fn symbol(self) -> String<5> {
+        self.SYMBOL
+    }
+
+    pub fn decimals(self) -> u8 {
+        self.DECIMALS
+    }
+
+    pub fn totalSupply(self) -> u256 {
+        self.TOTAL_SUPPLY
+    }
+
+    pub fn balanceOf(self, account : evm::Address) -> u256 {
+        self.balance.get(account)
+    }
+
+    pub fn transfer(mut self, to : evm::Address, value : u256) -> bool {
+        if self.balance.get(evm::__caller()) < value {
+            evm::__revert()
+        }
+        self.balance.set(evm::__caller(), self.balance.get(evm::__caller()) - value)
+        self.balance.set(to, self.balance.get(to) + value)
+        true
+    }
+    
+    pub fn allowance(self, owner : evm::Address, spender : evm::Address) -> u256 {
+        self.allowance.get((owner, spender))
+    }
+
+    pub fn approve(mut self, spender : evm::Address, value : u256) -> bool {
+        self.allowance.set((evm::__caller(), spender), value)
+        true
+    }
+
+    pub fn transferFrom(mut self, from : evm::Address, to : evm::Address, value : u256) -> bool {
+        if (self.allowance.get((from, evm::__caller())) < value || self.balance.get(from) < value) {
+            evm::__revert()
+        }
+        self.allowance.set((from, evm::__caller()), self.allowance.get((from, evm::__caller())) - value)
+        self.balance.set(from, self.balance.get(from) - value)
+        self.balance.set(to, self.balance.get(to) + value)
+        true
+    }
+}

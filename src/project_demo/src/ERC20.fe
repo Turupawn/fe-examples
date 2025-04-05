@@ -1,4 +1,5 @@
 use ingot::evm
+use ingot::map
 use ingot::solidity
 
 contract ERC20 {
@@ -60,8 +61,7 @@ impl ERC20 {
         if (self.allowance.get(key:(from, evm::__caller())) < value || self.balance.get(key: from) < value) {
             evm::__revert()
         }
-        self.allowance.entry(key: (from, evm::__caller()))
-            .or_insert(value: self.allowance.get(key: (from, evm::__caller())) - value)
+        self.allowance.modify_u256(key: (from, evm::__caller()), op: map::ModifyOp::Decrement { amount: value })
         self.balance.set(key: from, value: self.balance.get(key: from) - value)
         self.balance.set(key: to, value: self.balance.get(key: to) + value)
         true

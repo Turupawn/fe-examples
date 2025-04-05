@@ -1,5 +1,4 @@
 use ingot::evm
-use ingot::map
 use ingot::solidity
 
 contract ERC20 {
@@ -36,34 +35,35 @@ impl ERC20 {
     }
 
     pub fn balanceOf(self, account : evm::Address) -> u256 {
-        self.balance.get(account)
+        self.balance.get(key: account)
     }
 
     pub fn transfer(mut self, to : evm::Address, value : u256) -> bool {
-        if self.balance.get(evm::__caller()) < value {
+        if self.balance.get(key: evm::__caller()) < value {
             evm::__revert()
         }
-        self.balance.set(evm::__caller(), self.balance.get(evm::__caller()) - value)
-        self.balance.set(to, self.balance.get(to) + value)
+        self.balance.set(key: evm::__caller(), value: self.balance.get(key: evm::__caller()) - value)
+        self.balance.set(key: to, value: self.balance.get(key: to) + value)
         true
     }
     
     pub fn allowance(self, owner : evm::Address, spender : evm::Address) -> u256 {
-        self.allowance.get((owner, spender))
+        self.allowance.get(key: (owner, spender))
     }
 
     pub fn approve(mut self, spender : evm::Address, value : u256) -> bool {
-        self.allowance.set((evm::__caller(), spender), value)
+        self.allowance.set(key: (evm::__caller(), spender), value: value)
         true
     }
 
     pub fn transferFrom(mut self, from : evm::Address, to : evm::Address, value : u256) -> bool {
-        if (self.allowance.get((from, evm::__caller())) < value || self.balance.get(from) < value) {
+        if (self.allowance.get(key:(from, evm::__caller())) < value || self.balance.get(key: from) < value) {
             evm::__revert()
         }
-        self.allowance.set((from, evm::__caller()), self.allowance.get((from, evm::__caller())) - value)
-        self.balance.set(from, self.balance.get(from) - value)
-        self.balance.set(to, self.balance.get(to) + value)
+        self.allowance.entry(key: (from, evm::__caller()))
+            .or_insert(value: self.allowance.get(key: (from, evm::__caller())) - value)
+        self.balance.set(key: from, value: self.balance.get(key: from) - value)
+        self.balance.set(key: to, value: self.balance.get(key: to) + value)
         true
     }
 }

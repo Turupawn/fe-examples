@@ -32,10 +32,8 @@ pub fn malloc(len: usize) -> Buf {
     Buf { offset: Ptr { location: free_memory_pointer_location }, len: 1}
 }
 
-pub fn salloc(len: usize) -> Ptr {
-    // TODO: initialize the free memory pointer
-    //let free_memory_pointer : StorageWords = __mload(WordSlice { offset: 0x40, length: 1 })
-    // TODO: can I use extern functions here?
-    let free_memory_pointer_location : usize //= u256_as_usize(free_memory_pointer.values[0])
-    Ptr { location: free_memory_pointer_location }
+pub fn salloc(len: usize) -> Buf {
+    // TODO: implement this
+    let free_storage_pointer_location : usize //= u256_as_usize(free_memory_pointer.values[0])
+    Buf { offset: Ptr { location: free_storage_pointer_location }, len: 1}
 }

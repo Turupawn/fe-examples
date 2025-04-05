@@ -122,7 +122,7 @@ impl Read for StorageBuffer {
 // ENCODE AND DECODE
 
 pub trait Decode {
-    fn decode<R: Read>(mut r: R) -> Self
+    fn decode<R: Read>(mut r: R) -> BufferResult<Self>
     fn decode_size() -> usize
 }
 
@@ -132,8 +132,8 @@ pub trait Encode {
 }
 
 impl Decode for u256 {
-    fn decode<R: Read>(mut r: R) -> u256 {
-        r.read_word().value
+    fn decode<R: Read>(mut r: R) -> BufferResult<u256> {
+        r.read_word()
     }
     fn decode_size() -> usize {
         32
@@ -150,37 +150,80 @@ impl Encode for u256 {
     }
 }
 
-pub struct Map<T, U, H: Hasher, S: HashMapStorage<T, U>> {
-    pub hasher: H,
-    pub storage: S
-}
-
-impl<T, U, H: Hasher, S: HashMapStorage<T, U>> HashMapStorage<T, U> for Map<T, U, H, S>
-    where T: Encode, U: Encode, U: Decode
-{
-    fn get(self, _ key: T) -> U {
-        let value_slot: u256 = H::hash(self.hasher, key: key)
-        self.storage.get(key)
-    }
-
-    fn set(self, _ key: T, _ value: U) -> bool {
-        let value_slot: u256 = H::hash(self.hasher, key: key)
-        self.storage.set(key, value)
-    }
-}
-
-impl<T1: Encode, T2: Encode> Encode for (T1, T2) {
+impl Encode for (u256, u256) {
     fn encode<W: Write>(self, mut _ w: W) -> bool {
-        let (v1, v2) = self
-        v1.encode(w) && v2.encode(w)
+        let (a, b) = self
+        if !a.encode(w) {
+            return false
+        }
+        b.encode(w)
     }
 
     fn encode_size() -> usize {
-        T1::encode_size() + T2::encode_size()
+        64  // 2 * 32 bytes (size of two u256)
+    }
+}
+
+impl Decode for (u256, u256) {
+    fn decode<R: Read>(mut r: R) -> BufferResult<(u256, u256)> {
+        let a = u256::decode(r)
+        if a.is_error {
+            return BufferResult { value: (0, 0), is_error: true }
+        }
+        let b = u256::decode(r)
+        if b.is_error {
+            return BufferResult { value: (0, 0), is_error: true }
+        }
+        BufferResult { value: (a.value, b.value), is_error: false }
+    }
+
+    fn decode_size() -> usize {
+        64  // 2 * 32 bytes (size of two u256)
     }
 }
 
 pub trait HashMapStorage<T, U> {
-    fn get(mut self, _: T) -> U
-    fn set(mut self, _: T, _: U) -> bool
+    fn get(mut self, key: T) -> U
+    fn set(mut self, key: T, value: U) -> bool
+    fn entry(mut self, key: T) -> Entry<T, U, Self>
+    fn hash<V: Encode>(mut self, key: V) -> u256
+}
+
+pub struct Map<T, U, S: HashMapStorage<T, U>> {
+    pub storage: S
+}
+
+impl<T, U, S: HashMapStorage<T, U>> Map<T, U, S>
+    where T: Encode, U: Encode, U: Decode
+{
+    pub fn get(mut self, key: T) -> U {
+        self.storage.get(key)
+    }
+
+    pub fn set(mut self, key: T, value: U) -> bool {
+        self.storage.set(key, value)
+    }
+
+    pub fn entry(mut self, key: T) -> Entry<T, U, S> {
+        self.storage.entry(key)
+    }
+}
+
+// Entry
+
+pub enum Entry<T, U, S: HashMapStorage<T, U>> {
+    Occupied { pub key: T, pub value: U, pub index: u256, pub storage: S },
+    Vacant { pub key: T, pub storage: S }
+}
+
+impl<T, U, S: HashMapStorage<T, U>> Entry<T, U, S> {
+    pub fn or_insert(mut self, value: U) -> U {
+        match self {
+            Entry::Occupied { value: v, .. } => v
+            Entry::Vacant { key, mut storage } => {
+                storage.set(key, value)
+                value
+            }
+        }
+    }
 }

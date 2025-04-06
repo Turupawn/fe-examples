@@ -102,6 +102,10 @@ impl<T, U> map::HashMapStorage<T, U> for SolidityHashMapStorage<T, U>
             }
         }
     }
+
+    fn handle_vacant(self) -> U {
+        U::default()
+    }
 }
 
 pub type Mapping<T, U> = map::Map<T, U, SolidityHashMapStorage<T, U>>

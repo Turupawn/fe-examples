@@ -40,11 +40,12 @@ impl ERC20 {
     }
 
     pub fn transfer(mut self, to : evm::Address, value : u256) -> bool {
-        if self.balance.get(key: evm::__caller()) < value {
+        let caller_balance = self.balance.entry(key: evm::__caller())
+        if caller_balance.value() < value {
             evm::__revert()
         }
-        self.balance.set(key: evm::__caller(), value: self.balance.get(key: evm::__caller()) - value)
-        self.balance.set(key: to, value: self.balance.get(key: to) + value)
+        caller_balance.modify(op: map::ModifyOp::Sub { amount: value })
+        self.balance.entry(key: to).modify(op: map::ModifyOp::Add { amount: value })
         true
     }
     
@@ -61,7 +62,7 @@ impl ERC20 {
         if (self.allowance.get(key:(from, evm::__caller())) < value || self.balance.get(key: from) < value) {
             evm::__revert()
         }
-        self.allowance.modify_u256(key: (from, evm::__caller()), op: map::ModifyOp::Decrement { amount: value })
+        self.allowance.entry(key: (from, evm::__caller())).modify(op: map::ModifyOp::Sub { amount: value })
         self.balance.set(key: from, value: self.balance.get(key: from) - value)
         self.balance.set(key: to, value: self.balance.get(key: to) + value)
         true

@@ -187,10 +187,30 @@ pub trait HashMapStorage<T, U> {
     fn set(mut self, key: T, value: U) -> bool
     fn entry(mut self, key: T) -> Entry<T, U, Self>
     fn hash<V: Encode>(mut self, key: V) -> u256
+    fn handle_vacant(self) -> U
 }
 
 pub struct Map<T, U, S: HashMapStorage<T, U>> {
     pub storage: S
+}
+
+pub trait Arithmetic {
+    fn add(self, other: Self) -> Self
+    fn sub(self, other: Self) -> Self
+}
+
+impl Arithmetic for u256 {
+    fn add(self, other: u256) -> u256 {
+        self + other
+    }
+    fn sub(self, other: u256) -> u256 {
+        self - other
+    }
+}
+
+pub enum ModifyOp<T> {
+    Add { pub amount: T },
+    Sub { pub amount: T }
 }
 
 impl<T, U, S: HashMapStorage<T, U>> Map<T, U, S>
@@ -207,27 +227,6 @@ impl<T, U, S: HashMapStorage<T, U>> Map<T, U, S>
     pub fn entry(mut self, key: T) -> Entry<T, U, S> {
         self.storage.entry(key)
     }
-
-    pub fn modify_u256(mut self, key: T, op: ModifyOp) -> bool
-        where S: HashMapStorage<T, u256>,
-              U: Into<u256>,
-              U: Decode,
-              U: Encode
-    {
-        match self.entry(key) {
-            Entry::Occupied { key, value, index, mut storage } => {
-                let current_value: u256 = Into::into(value)
-                let new_value: u256 = match op {
-                    ModifyOp::Decrement{amount} => current_value - amount
-                    ModifyOp::Increment{amount} => current_value + amount
-                    ModifyOp::Set{value: new_val} => new_val
-                }
-                storage.set(key: key, value: new_value)
-                true
-            }
-            Entry::Vacant { .. } => false
-        }
-    }
 }
 
 // Entry
@@ -235,23 +234,6 @@ impl<T, U, S: HashMapStorage<T, U>> Map<T, U, S>
 pub enum Entry<T, U, S: HashMapStorage<T, U>> {
     Occupied { pub key: T, pub value: U, pub index: u256, pub storage: S },
     Vacant { pub key: T, pub storage: S }
-}
-
-pub enum ModifyOp {
-    Decrement { pub amount: u256 },
-    Increment { pub amount: u256 },
-    Set { pub value: u256 }
-}
-
-// Add this trait definition before the Entry impl
-pub trait Into<T> {
-    fn into(self) -> T
-}
-
-impl Into<u256> for u256 {
-    fn into(self) -> u256 {
-        self
-    }
 }
 
 impl<T, U, S: HashMapStorage<T, U>> Entry<T, U, S> {
@@ -265,19 +247,14 @@ impl<T, U, S: HashMapStorage<T, U>> Entry<T, U, S> {
         }
     }
 
-    pub fn modify_u256(mut self, op: ModifyOp) -> Entry<T, u256, S> 
-        where S: HashMapStorage<T, u256>,
-              U: Into<u256>,
-              U: Decode,
-              U: Encode
+    pub fn modify(mut self, op: ModifyOp<U>) -> Entry<T, U, S>
+        where U: Arithmetic
     {
         match self {
             Entry::Occupied { key, value, index, mut storage } => {
-                let current_value: u256 = Into::into(value)
-                let new_value: u256 = match op {
-                    ModifyOp::Decrement{amount} => current_value - amount
-                    ModifyOp::Increment{amount} => current_value + amount
-                    ModifyOp::Set{value: new_val} => new_val
+                let new_value = match op {
+                    ModifyOp::Sub{amount} => value.sub(other: amount)
+                    ModifyOp::Add{amount} => value.add(other: amount)
                 }
                 storage.set(key: key, value: new_value)
                 Entry::Occupied { key, value: new_value, index, storage }
@@ -287,8 +264,11 @@ impl<T, U, S: HashMapStorage<T, U>> Entry<T, U, S> {
             }
         }
     }
-}
 
-// Usage would look like this:
-// entry.modify(ModifyOp::Decrement { amount: 10 })
-// entry.modify(ModifyOp::Set { value: 42 })
+    pub fn value(self) -> U {
+        match self {
+            Entry::Occupied { value, .. } => value
+            Entry::Vacant { storage, .. } => storage.handle_vacant()
+        }
+    }
+}

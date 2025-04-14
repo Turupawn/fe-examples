@@ -23,10 +23,16 @@ pub struct MemBuffer { pub ptr: evm::Ptr, pub len: u256 }
 
 impl Buffer for MemBuffer {
     fn write_word(mut self, offset: u256, w: u256) -> bool {
+        if offset >= self.len {
+            return false
+        }
         evm::__mstore(self.ptr.location.upcast() + offset, w)
         true
     }
     fn read_word(mut self, offset: u256) -> BufferResult<u256> {
+        if offset >= self.len {
+            return BufferResult { value: 0, is_error: true }
+        }
         let value = evm::__mload(self.ptr.location.upcast() + offset)
         BufferResult { value: value, is_error: false }
     }
@@ -194,25 +200,6 @@ pub struct Map<T, U, S: HashMapStorage<T, U>> {
     pub storage: S
 }
 
-pub trait Arithmetic {
-    fn add(self, other: Self) -> Self
-    fn sub(self, other: Self) -> Self
-}
-
-impl Arithmetic for u256 {
-    fn add(self, other: u256) -> u256 {
-        self + other
-    }
-    fn sub(self, other: u256) -> u256 {
-        self - other
-    }
-}
-
-pub enum ModifyOp<T> {
-    Add { pub amount: T },
-    Sub { pub amount: T }
-}
-
 impl<T, U, S: HashMapStorage<T, U>> Map<T, U, S>
     where T: Encode, U: Encode, U: Decode
 {
@@ -247,28 +234,76 @@ impl<T, U, S: HashMapStorage<T, U>> Entry<T, U, S> {
         }
     }
 
-    pub fn modify(mut self, op: ModifyOp<U>) -> Entry<T, U, S>
-        where U: Arithmetic
-    {
-        match self {
-            Entry::Occupied { key, value, index, mut storage } => {
-                let new_value = match op {
-                    ModifyOp::Sub{amount} => value.sub(other: amount)
-                    ModifyOp::Add{amount} => value.add(other: amount)
-                }
-                storage.set(key: key, value: new_value)
-                Entry::Occupied { key, value: new_value, index, storage }
-            }
-            Entry::Vacant { key, storage } => {
-                Entry::Vacant { key, storage }
-            }
-        }
-    }
-
     pub fn value(self) -> U {
         match self {
             Entry::Occupied { value, .. } => value
             Entry::Vacant { storage, .. } => storage.handle_vacant()
         }
+    }
+}
+
+pub trait Add {
+    fn add(self, other: Self) -> Self
+}
+
+pub trait Sub {
+    fn sub(self, other: Self) -> Self
+}
+
+pub trait AddAssign<V> {
+    fn add_assign(mut self, other: V)
+}
+
+impl<K, V, S> AddAssign<V> for Entry<K, V, S>
+    where 
+        S: HashMapStorage<K, V>,
+        V: Add
+{
+    fn add_assign(mut self, other: V) {
+        match self {
+            Entry::Occupied { key, value, index, mut storage } => {
+                let new_value = value.add(other: other)
+                storage.set(key: key, value: new_value)
+                self = Entry::Occupied { key, value: new_value, index, storage }
+            }
+            Entry::Vacant { key, storage } => {
+                self = Entry::Vacant { key, storage }
+            }
+        }
+    }
+}
+
+pub trait SubAssign<V> {
+    fn sub_assign(mut self, other: V)
+}
+
+impl<K, V, S> SubAssign<V> for Entry<K, V, S>
+    where 
+        S: HashMapStorage<K, V>,
+        V: Sub
+{
+    fn sub_assign(mut self, other: V) {
+        match self {
+            Entry::Occupied { key, value, index, mut storage } => {
+                let new_value = value.sub(other: other)
+                storage.set(key: key, value: new_value)
+                self = Entry::Occupied { key, value: new_value, index, storage }
+            }
+            Entry::Vacant { key, storage } => {
+                self = Entry::Vacant { key, storage }
+            }
+        }
+    }
+}
+
+impl Add for u256 {
+    fn add(self, other: u256) -> u256 {
+        self + other
+    }
+}
+
+impl Sub for u256 {
+    fn sub(self, other: u256) -> u256 {
+        self - other
     }
 }

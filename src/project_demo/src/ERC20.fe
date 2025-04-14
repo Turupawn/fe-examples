@@ -44,8 +44,8 @@ impl ERC20 {
         if caller_balance.value() < value {
             evm::__revert()
         }
-        caller_balance.modify(op: map::ModifyOp::Sub { amount: value })
-        self.balance.entry(key: to).modify(op: map::ModifyOp::Add { amount: value })
+        caller_balance.sub_assign(other:value)
+        self.balance.entry(key: to).add_assign(other:value)
         true
     }
     
@@ -62,9 +62,9 @@ impl ERC20 {
         if (self.allowance.get(key:(from, evm::__caller())) < value || self.balance.get(key: from) < value) {
             evm::__revert()
         }
-        self.allowance.entry(key: (from, evm::__caller())).modify(op: map::ModifyOp::Sub { amount: value })
-        self.balance.set(key: from, value: self.balance.get(key: from) - value)
-        self.balance.set(key: to, value: self.balance.get(key: to) + value)
+        self.allowance.entry(key: (from, evm::__caller())).sub_assign(other:value)
+        self.balance.entry(key: from).sub_assign(other:value)
+        self.balance.entry(key: to).add_assign(other:value)
         true
     }
 }

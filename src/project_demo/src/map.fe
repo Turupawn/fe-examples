@@ -1,8 +1,5 @@
 use ingot::evm
-
-pub trait Hasher {
-    fn hash<T: Encode>(mut self, key: T) -> u256
-}
+use test::Hasher
 
 // BUFFER
 

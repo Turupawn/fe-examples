@@ -1,0 +1,5 @@
+use super::Encode
+
+pub trait Hasher {
+    fn hash<T: Encode>(mut self, key: T) -> u256
+}

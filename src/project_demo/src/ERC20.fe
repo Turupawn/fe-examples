@@ -1,5 +1,5 @@
 use ingot::evm
-use ingot::map
+use ingot::std::map
 use ingot::solidity
 
 contract ERC20 {

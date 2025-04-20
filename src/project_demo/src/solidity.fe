@@ -1,5 +1,5 @@
 use ingot::evm
-use ingot::map
+use ingot::std::map
 use ingot::evm::{ MemBuffer, StorageBuffer }
 use ingot::std::codec::{ Cursor, Encode, Decode }
 use map::{ Map, Hasher, HashMapStorage, Entry }

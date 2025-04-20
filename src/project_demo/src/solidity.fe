@@ -1,8 +1,8 @@
 use ingot::evm
 use ingot::map
 use ingot::evm::{ MemBuffer, StorageBuffer }
-use ingot::std::codec::{ Cursor }
-use ingot::map::{ Map }
+use ingot::std::codec::{ Cursor, Encode, Decode }
+use map::{ Map, Hasher, HashMapStorage, Entry }
 
 pub trait IsZero {
     fn is_zero(self) -> bool
@@ -29,9 +29,9 @@ pub struct Keccak256 {
 }
 
 impl map::Hasher for Keccak256 {
-    fn hash<T: map::Encode>(mut self, key: T) -> u256 {
+    fn hash<T: Encode>(mut self, key: T) -> u256 {
         let allocated_buffer = evm::malloc(len: 32 + T::encode_size())
-        let mut key_cursor = map::Cursor {
+        let mut key_cursor = Cursor {
             inner: evm::MemBuffer {
                 ptr: allocated_buffer.offset,
                 len: allocated_buffer.len.upcast()
@@ -51,9 +51,9 @@ impl map::Hasher for Keccak256 {
 pub struct SolidityHashMapStorage<T, U> {}
 
 impl<T, U> map::HashMapStorage<T, U> for SolidityHashMapStorage<T, U> 
-    where T: map::Encode, U: map::Encode, U: map::Decode, U: IsZero, U: Default
+    where T: Encode, U: Encode, U: Decode, U: IsZero, U: Default
 {
-    fn hash<V: map::Encode>(mut self, key: V) -> u256 {
+    fn hash<V: Encode>(mut self, key: V) -> u256 {
         let hasher = Keccak256 { slot: 0 }
         hasher.hash(key)
     }
@@ -114,7 +114,7 @@ impl<T, U> map::HashMapStorage<T, U> for SolidityHashMapStorage<T, U>
 pub type Mapping<T, U> = map::Map<T, U, SolidityHashMapStorage<T, U>>
 
 impl<T, U> Mapping<T, U> 
-    where T: map::Encode, U: map::Encode, U: map::Decode, U: IsZero, U: Default
+    where T: Encode, U: Encode, U: Decode, U: IsZero, U: Default
 {
     pub fn new(mut self, slot: u256) {
         //self.hasher.slot = slot

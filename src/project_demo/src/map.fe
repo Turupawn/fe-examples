@@ -8,54 +8,10 @@ pub struct BufferResult<T> {
     pub is_error: bool
 }
 
-trait Buffer {
+pub trait Buffer {
     fn write_word(mut self, offset: u256, w: u256) -> bool
     fn read_word(mut self, offset: u256) -> BufferResult<u256>
     fn len(self) -> u256
-}
-
-// MEMORY BUFFER
-
-pub struct MemBuffer { pub ptr: evm::Ptr, pub len: u256 }
-
-impl Buffer for MemBuffer {
-    fn write_word(mut self, offset: u256, w: u256) -> bool {
-        if offset >= self.len {
-            return false
-        }
-        evm::__mstore(self.ptr.location.upcast() + offset, w)
-        true
-    }
-    fn read_word(mut self, offset: u256) -> BufferResult<u256> {
-        if offset >= self.len {
-            return BufferResult { value: 0, is_error: true }
-        }
-        let value = evm::__mload(self.ptr.location.upcast() + offset)
-        BufferResult { value: value, is_error: false }
-    }
-
-    fn len(self) -> u256 {
-        self.len
-    }
-}
-
-// STORAGE BUFFER
-
-pub struct StorageBuffer { pub ptr: evm::Ptr, pub len: u256 }
-
-impl Buffer for StorageBuffer {
-    fn write_word(mut self, offset: u256, w: u256) -> bool {
-        evm::__sstore(offset, w)
-        true
-    }
-    fn read_word(mut self, offset: u256) -> BufferResult<u256> {
-        let value = evm::__sload(offset)
-        BufferResult { value: value, is_error: false }
-    }
-
-    fn len(self) -> u256 {
-        self.len
-    }
 }
 
 // CURSOR
@@ -89,38 +45,13 @@ impl<B: Buffer> Read for Cursor<B> {
 
 // WRITE
 
-trait Write {
+pub trait Write {
     fn write_word(mut self, w: u256) -> bool
 }
 
-impl Write for MemBuffer {
-    fn write_word(mut self, w: u256) -> bool {
-        Buffer::write_word(self, offset: self.ptr.location.upcast(), w)
-    }
-}
-
-impl Write for StorageBuffer {
-    fn write_word(mut self, w: u256) -> bool {
-        Buffer::write_word(self, offset: 0, w)
-    }
-}
-
-trait Read {
+pub trait Read {
     fn read_word(mut self) -> BufferResult<u256>
 }
-
-impl Read for MemBuffer {
-    fn read_word(mut self) -> BufferResult<u256> {
-        Buffer::read_word(self, offset: 0)
-    }
-}
-
-impl Read for StorageBuffer {
-    fn read_word(mut self) -> BufferResult<u256> {
-        Buffer::read_word(self, offset: 0)
-    }
-}
-
 
 // ENCODE AND DECODE
 

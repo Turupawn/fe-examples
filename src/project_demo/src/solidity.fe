@@ -1,5 +1,7 @@
 use ingot::evm
 use ingot::map
+use ingot::evm::{ MemBuffer, StorageBuffer }
+use ingot::map::{ Cursor, Map }
 
 pub trait IsZero {
     fn is_zero(self) -> bool
@@ -29,7 +31,7 @@ impl map::Hasher for Keccak256 {
     fn hash<T: map::Encode>(mut self, key: T) -> u256 {
         let allocated_buffer = evm::malloc(len: 32 + T::encode_size())
         let mut key_cursor = map::Cursor {
-            inner: map::MemBuffer {
+            inner: evm::MemBuffer {
                 ptr: allocated_buffer.offset,
                 len: allocated_buffer.len.upcast()
             },
@@ -65,8 +67,8 @@ impl<T, U> map::HashMapStorage<T, U> for SolidityHashMapStorage<T, U>
     fn set(mut self, key: T, value: U) -> bool {
         let storage_key = self.hash(key)
         let allocated_storage = evm::salloc(len: U::encode_size())
-        let value_cursor = map::Cursor {
-            inner: map::StorageBuffer { 
+        let value_cursor = Cursor {
+            inner: StorageBuffer {
                 ptr: allocated_storage.offset, 
                 len: U::encode_size().upcast() 
             },
@@ -77,8 +79,8 @@ impl<T, U> map::HashMapStorage<T, U> for SolidityHashMapStorage<T, U>
 
     fn entry(mut self, key: T) -> map::Entry<T, U, SolidityHashMapStorage<T, U>> {
         let index = self.hash(key)
-        let mut cursor = map::Cursor {
-            inner: map::StorageBuffer { 
+        let mut cursor = Cursor {
+            inner: StorageBuffer {
                 ptr: evm::Ptr { location: index.downcast_truncate() }, 
                 len: U::encode_size().upcast() 
             },

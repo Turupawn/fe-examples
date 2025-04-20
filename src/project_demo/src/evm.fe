@@ -5,7 +5,7 @@ pub struct Wei { value: usize }
 pub struct Ptr { pub location: usize }
 pub struct Buf { pub offset: Ptr, pub len: usize }
 
-use ingot::map::{ Buffer, BufferResult, Write, Read }
+use ingot::std::codec::{ Buffer, BufferResult, Write, Read }
 
 impl Buf {
     pub fn write_word(mut self, _ w: u256) {

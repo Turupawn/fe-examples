@@ -1,7 +1,8 @@
 use ingot::evm
 use ingot::map
 use ingot::evm::{ MemBuffer, StorageBuffer }
-use ingot::map::{ Cursor, Map }
+use ingot::std::codec::{ Cursor }
+use ingot::map::{ Map }
 
 pub trait IsZero {
     fn is_zero(self) -> bool

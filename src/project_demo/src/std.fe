@@ -1,3 +1,5 @@
+use ingot::std::codec::{Buffer, BufferResult, Cursor, Read, Write, Encode, Decode}
+
 extern {
     pub fn todo() -> !
 }

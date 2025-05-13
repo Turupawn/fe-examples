@@ -1,0 +1,149 @@
+use ingot::codec::{ Cursor, Encode, Decode }
+use ingot::mydefault::{ MyDefault }
+use ingot::option::{ Option }
+use ingot::map::{ Map, Hasher, MapStorage, Entry }
+
+// Constants for the hash table
+const TABLE_SIZE: usize = 32  // Fixed size table
+const EMPTY: u256 = 0
+const DELETED: u256 = 1
+const OCCUPIED: u256 = 2
+
+pub struct SwissTableHasher {
+    pub slot: u256  // We keep this for interface compatibility but don't use it
+}
+
+impl Hasher for SwissTableHasher {
+    fn hash<T: Encode>(mut self, key: T) -> u256 {
+        // For u256 keys, just use the value directly
+        //(key % TABLE_SIZE.upcast()).downcast_truncate()
+        42
+    }
+}
+
+pub struct SwissTableStorage<T, U> {
+    keys: [T; 32],
+    values: [U; 32],
+    states: [u256; 32],  // 0 = empty, 1 = deleted, 2 = occupied
+    size: usize
+}
+
+impl<T, U> MapStorage<T, U> for SwissTableStorage<T, U>
+where 
+    T: Encode + Decode + MyDefault,
+    U: Encode + Decode + MyDefault
+{
+    fn get(mut self, key: T) -> U {
+        match self.entry(key) {
+            Entry::Occupied { value, .. } => value
+            Entry::Vacant { .. } => U::default()
+        }
+    }
+
+    fn set(mut self, mut key: T, mut value: U) -> bool {
+        if self.size >= TABLE_SIZE {
+            return false  // Table is full
+        }
+
+        let mut index = SwissTableHasher { slot: 0 }.hash(key)  // Now returns usize directly
+        let mut distance = 0
+
+        while true {
+            if self.states[index] == EMPTY || self.states[index] == DELETED {
+                // Found a spot to insert
+                self.keys[index] = key
+                self.values[index] = value
+                self.states[index] = OCCUPIED
+                self.size += 1
+                return true
+            }
+
+            // Robin Hood hashing: if current element has traveled less than us,
+            // swap and continue searching
+            if self.states[index] == OCCUPIED {
+                let current_key = self.keys[index]
+                let current_hash = SwissTableHasher { slot: 0 }.hash(key: current_key)
+                let current_distance = (index - (current_hash % TABLE_SIZE.upcast())) % TABLE_SIZE.upcast()
+
+                if current_distance < distance {
+                    // Swap
+                    let temp_key = self.keys[index]
+                    let temp_value = self.values[index]
+                    self.keys[index] = key
+                    self.values[index] = value
+                    key = temp_key
+                    value = temp_value
+                    distance = current_distance
+                }
+            }
+
+            index = (index + 1) % TABLE_SIZE.upcast()
+            distance += 1
+        }
+        true
+    }
+
+    fn entry(mut self, key: T) -> Entry<T, U, SwissTableStorage<T, U>> {
+        let mut index = SwissTableHasher { slot: 0 }.hash(key)  // Now returns usize directly
+        let mut distance = 0
+
+        while self.states[index] != EMPTY {
+            if self.states[index] == OCCUPIED {
+            // && (self.keys[index].upcast() == key.upcast()) {
+                return Entry::Occupied {
+                    key,
+                    value: self.values[index],
+                    index: index,
+                    storage: self
+                }
+            }
+
+            if self.states[index] == DELETED || (self.states[index] == OCCUPIED && (index - (SwissTableHasher { slot: 0 }.hash(key: self.keys[index]) % TABLE_SIZE.upcast())) % TABLE_SIZE.upcast() < distance) {
+                return Entry::Vacant {
+                    key,
+                    storage: self
+                }
+            }
+
+            index = (index + 1) % TABLE_SIZE.upcast()
+            distance += 1
+        }
+
+        Entry::Vacant {
+            key,
+            storage: self
+        }
+    }
+}
+
+impl<T, U> SwissTableStorage<T, U> 
+where 
+    T: Encode + Decode + MyDefault,
+    U: Encode + Decode + MyDefault
+{
+    pub fn new() -> Self {
+        SwissTableStorage {
+            keys: [MyDefault::default(); 32],
+            values: [MyDefault::default(); 32],
+            states: [EMPTY; 32],
+            size: 0
+        }
+    }
+}
+
+pub type SwissTable<T, U> = Map<T, U, SwissTableStorage<T, U>>
+
+pub trait SwissTableExt<T, U> {
+    fn new() -> Self
+}
+
+impl<T, U> SwissTableExt<T, U> for SwissTable<T, U>
+where
+    T: Encode + Decode + MyDefault,
+    U: Encode + Decode + MyDefault
+{
+    fn new() -> Self {
+        let storage = SwissTableStorage::new()
+        Map { storage: storage }
+    }
+}

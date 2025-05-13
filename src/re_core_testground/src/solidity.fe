@@ -1,0 +1,112 @@
+use ingot::evm
+use ingot::map
+use ingot::evm::{ MemBuffer, StorageBuffer }
+use ingot::mydefault::MyDefault
+use ingot::codec::{ Cursor, Encode, Decode }
+use map::{ Map, Hasher, MapStorage, Entry }
+
+pub trait IsZero {
+    fn is_zero(self) -> bool
+}
+
+impl IsZero for u256 {
+    fn is_zero(self) -> bool {
+        self == 0
+    }
+}
+
+pub struct Keccak256 {
+    pub slot: u256
+}
+
+impl map::Hasher for Keccak256 {
+    fn hash<T: Encode>(mut self, key: T) -> u256 {
+        let allocated_buffer = evm::malloc(len: 32 + T::encode_size())
+        let mut key_cursor = Cursor {
+            inner: evm::MemBuffer {
+                ptr: allocated_buffer.offset,
+                len: allocated_buffer.len.upcast()
+            },
+            pos: 0
+        }
+
+        self.slot.encode(key_cursor)
+        key.encode(key_cursor)
+
+        let buf = evm::Buf { offset: allocated_buffer.offset, len: allocated_buffer.len }
+        let result: u256 = evm::__keccak256(args: buf)
+        result
+    }
+}
+
+pub struct SolidityMapStorage<T, U, H: map::Hasher> {
+    pub hasher: H
+}
+
+impl<T, U, H> map::MapStorage<T, U> for SolidityMapStorage<T, U, H>
+    where T: Encode, U: Encode, U: Decode, U: IsZero, U: MyDefault, H: map::Hasher
+{
+    fn get(mut self, key: T) -> U {
+        match self.entry(key) {
+            map::Entry::Occupied { value, .. } => value
+            map::Entry::Vacant { .. } => U::default()
+        }
+    }
+
+    fn set(mut self, key: T, value: U) -> bool {
+        let storage_key = self.hasher.hash(key)
+        let allocated_storage = evm::salloc(len: U::encode_size())
+        let value_cursor = Cursor {
+            inner: StorageBuffer {
+                ptr: allocated_storage.offset, 
+                len: U::encode_size().upcast() 
+            },
+            pos: 0
+        }
+        value.encode(value_cursor)
+    }
+
+    fn entry(mut self, key: T) -> map::Entry<T, U, SolidityMapStorage<T, U, H>> {
+        let index = self.hasher.hash(key)
+        let mut cursor = Cursor {
+            inner: StorageBuffer {
+                ptr: evm::Ptr { location: index.downcast_truncate() }, 
+                len: U::encode_size().upcast() 
+            },
+            pos: 0
+        }
+
+        let decode_result = U::decode(r: cursor)
+        
+        if decode_result.is_error || decode_result.value.is_zero() {
+            return map::Entry::Vacant { 
+                key,
+                storage: self 
+            }
+        } else {
+            let decode_result = U::decode(r: cursor)
+            map::Entry::Occupied { 
+                key,
+                value: decode_result.value,
+                index: index,
+                storage: self
+            }
+        }
+    }
+}
+
+pub type Mapping<T, U> = map::Map<T, U, SolidityMapStorage<T, U, Keccak256>>
+
+pub trait MappingExt<T, U> {
+    fn new(self, slot: u256)
+}
+
+impl<T, U> MappingExt<T, U> for Mapping<T, U>
+where
+    T: Encode,
+    U: Encode + Decode + IsZero + MyDefault,
+{
+    fn new(mut self, slot: u256) {
+        //self.hasher.slot = slot
+    }
+}

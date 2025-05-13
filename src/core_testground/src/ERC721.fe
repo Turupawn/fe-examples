@@ -1,0 +1,75 @@
+use ingot::evm
+use core::map
+use ingot::solidity
+
+contract ERC721 {
+    pub owner_of: solidity::Mapping<u256, evm::Address>,
+    pub approved: solidity::Mapping<u256, evm::Address>,
+    pub balance: solidity::Mapping<evm::Address, u256>,
+    pub NAME: String<20>,
+    pub SYMBOL: String<5>
+}
+
+impl ERC721 {
+    pub fn constructor(mut self, name: String<20>, symbol: String<5>) {
+        self.NAME = name
+        self.SYMBOL = symbol
+        self.owner_of.new(slot: 0)
+        self.approved.new(slot: 1)
+        self.balance.new(slot: 2)
+    }
+
+    pub fn name(self) -> String<20> {
+        self.NAME
+    }
+
+    pub fn symbol(self) -> String<5> {
+        self.SYMBOL
+    }
+
+    pub fn ownerOf(self, token_id: u256) -> evm::Address {
+        let owner = self.owner_of.get(key: token_id)
+        if owner == 0 {
+            evm::__revert()
+        }
+        owner
+    }
+
+    pub fn balanceOf(self, owner: evm::Address) -> u256 {
+        self.balance.get(key: owner)
+    }
+
+    pub fn approve(mut self, to: evm::Address, token_id: u256) {
+        let owner = self.owner_of.get(key: token_id)
+        if owner != evm::__caller() {
+            evm::__revert()
+        }
+        self.approved.set(key: token_id, value: to)
+        ()
+    }
+
+    pub fn getApproved(self, token_id: u256) -> evm::Address {
+        self.approved.get(key: token_id)
+    }
+
+    pub fn transferFrom(mut self, from: evm::Address, to: evm::Address, token_id: u256) {
+        let owner = self.owner_of.get(key: token_id)
+        let approved = self.approved.get(key: token_id)
+        let caller = evm::__caller()
+        if owner != from || (caller != owner && caller != approved) {
+            evm::__revert()
+        }
+        self.owner_of.set(key: token_id, value: to)
+        self.approved.set(key: token_id, value: 0)
+        self.balance.entry(key: from).sub_assign(rhs: 1)
+        self.balance.entry(key: to).add_assign(rhs: 1)
+    }
+
+    pub fn mint(mut self, to: evm::Address, token_id: u256) {
+        if self.owner_of.get(key: token_id) != 0 {
+            evm::__revert()
+        }
+        self.owner_of.set(key: token_id, value: to)
+        self.balance.entry(key: to).add_assign(rhs: 1)
+    }
+}

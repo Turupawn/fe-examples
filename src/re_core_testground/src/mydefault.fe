@@ -1,0 +1,15 @@
+pub trait MyDefault {
+    fn default() -> Self
+}
+
+impl MyDefault for usize {
+    fn default() -> Self {
+        0
+    }
+}
+
+impl MyDefault for u256 {
+    fn default() -> Self {
+        0
+    }
+}

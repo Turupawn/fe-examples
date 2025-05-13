@@ -1,0 +1,25 @@
+use ingot::evm
+use ingot::swisstablemap::{ SwissTable, SwissTableExt }
+use ingot::map::{ Entry }
+
+contract SillyDemo {
+    // A table that maps numbers to their square roots
+    pub square_roots: SwissTable<u256, u256>
+}
+
+impl SillyDemo {
+    pub fn constructor(mut self) {
+        self.square_roots = SwissTable<u256, u256>::new()
+    }
+
+    pub fn store_square_root(mut self, number: u256) -> bool {
+        // Store a number and its square root in the table
+        // (This is silly because we're storing the same number as both key and value)
+        self.square_roots.set(key: number, value: number)
+    }
+
+    pub fn get_square_root(self, number: u256) -> u256 {
+        // Get the "square root" (which is just the same number)
+        self.square_roots.get(key: number)
+    }
+}

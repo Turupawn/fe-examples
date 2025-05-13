@@ -1,0 +1,70 @@
+use ingot::evm
+use core::map
+use ingot::solidity
+
+contract ERC20 {
+    pub balance: solidity::Mapping<evm::Address, u256>,
+    pub allowance: solidity::Mapping<(evm::Address, evm::Address), u256>,
+    pub TOTAL_SUPPLY: u256,
+    pub NAME: String<20>,
+    pub SYMBOL: String<5>,  
+    pub DECIMALS: u8
+}
+
+impl ERC20 {
+    pub fn constructor(mut self) {
+        self.TOTAL_SUPPLY = 21_000_000 * 10**18
+        self.balance.new(slot: 0)
+        self.allowance.new(slot: 1)
+        let result = self.balance.set(key: evm::__caller(), value:self.TOTAL_SUPPLY)
+    }
+
+    pub fn name(self) -> String<20> {
+        self.NAME
+    }
+
+    pub fn symbol(self) -> String<5> {
+        self.SYMBOL
+    }
+
+    pub fn decimals(self) -> u8 {
+        self.DECIMALS
+    }
+
+    pub fn totalSupply(self) -> u256 {
+        self.TOTAL_SUPPLY
+    }
+
+    pub fn balanceOf(self, account : evm::Address) -> u256 {
+        self.balance.get(key: account)
+    }
+
+    pub fn transfer(mut self, to : evm::Address, value : u256) -> bool {
+        let caller_balance = self.balance.entry(key: evm::__caller())
+        if caller_balance.value() < value {
+            evm::__revert()
+        }
+        caller_balance.sub_assign(rhs:value)
+        self.balance.entry(key: to).add_assign(rhs:value)
+        true
+    }
+    
+    pub fn allowance(self, owner : evm::Address, spender : evm::Address) -> u256 {
+        self.allowance.get(key: (owner, spender))
+    }
+
+    pub fn approve(mut self, spender : evm::Address, value : u256) -> bool {
+        self.allowance.set(key: (evm::__caller(), spender), value: value)
+        true
+    }
+
+    pub fn transferFrom(mut self, from : evm::Address, to : evm::Address, value : u256) -> bool {
+        if (self.allowance.get(key:(from, evm::__caller())) < value || self.balance.get(key: from) < value) {
+            evm::__revert()
+        }
+        self.allowance.entry(key: (from, evm::__caller())).sub_assign(rhs:value)
+        self.balance.entry(key: from).sub_assign(rhs:value)
+        self.balance.entry(key: to).add_assign(rhs:value)
+        true
+    }
+}

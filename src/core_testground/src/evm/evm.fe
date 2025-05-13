@@ -1,0 +1,113 @@
+const HASH_SCRATCH_OFFSET: u256 = 0x0
+const SLOT_SIZE: usize = 32
+pub type Address = u256
+pub struct Wei { value: usize }
+pub struct Ptr { pub location: usize }
+pub struct Buf { pub offset: Ptr, pub len: usize }
+
+use core::codec::{ Buffer, BufferResult, Write, Read }
+
+impl Buf {
+    pub fn write_word(mut self, _ w: u256) {
+        __mstore(self.offset.location.upcast(), w)
+    }
+}
+
+// TODO: how to declare dynamic array?
+extern {
+    pub fn __call(gas: Wei, address: Address, value: Wei, args: Buf, ret: Buf)
+    pub fn __mstore(_ loc: u256, _ data: u256)
+    pub fn __mload(_ loc: u256) -> u256
+    pub fn __sstore(_ loc: u256, _ data: u256)
+    pub fn __sload(_ loc: u256) -> u256
+    pub fn __keccak256(args: Buf) -> u256 // TODO: Should this use WordSlice?
+    pub fn __caller() -> Address
+    pub fn __revert()
+    //pub fn __sstore2(_ loc: StoragePtr, _ data: &[u8])
+}
+
+pub fn malloc(len: usize) -> Buf {
+    // TODO: initialize the free memory pointer
+    //let free_memory_pointer : StorageWords = __mload(WordSlice { offset: 0x40, length: 1 })
+    // TODO: can I use extern functions here?
+    let free_memory_pointer_location : usize //= u256_as_usize(free_memory_pointer.values[0])
+    Buf { offset: Ptr { location: free_memory_pointer_location }, len: 1}
+}
+
+pub fn salloc(len: usize) -> Buf {
+    // TODO: implement this
+    let free_storage_pointer_location : usize //= u256_as_usize(free_memory_pointer.values[0])
+    Buf { offset: Ptr { location: free_storage_pointer_location }, len: 1}
+}
+
+pub struct MemBuffer {
+    pub ptr: Ptr,
+    pub len: u256
+}
+
+impl Buffer for MemBuffer {
+    fn write_word(mut self, offset: u256, w: u256) -> bool {
+        if offset >= self.len {
+            return false
+        }
+        __mstore(self.ptr.location.upcast() + offset, w)
+        true
+    }
+
+    fn read_word(mut self, offset: u256) -> BufferResult<u256> {
+        if offset >= self.len {
+            return BufferResult { value: 0, is_error: true }
+        }
+        let value = __mload(self.ptr.location.upcast() + offset)
+        BufferResult { value: value, is_error: false }
+    }
+
+    fn len(self) -> u256 {
+        self.len
+    }
+}
+
+pub struct StorageBuffer {
+    pub ptr: Ptr,
+    pub len: u256
+}
+
+impl Buffer for StorageBuffer {
+    fn write_word(mut self, offset: u256, w: u256) -> bool {
+        __sstore(offset, w)
+        true
+    }
+
+    fn read_word(mut self, offset: u256) -> BufferResult<u256> {
+        let value = __sload(offset)
+        BufferResult { value: value, is_error: false }
+    }
+
+    fn len(self) -> u256 {
+        self.len
+    }
+}
+
+impl Write for MemBuffer {
+    fn write_word(mut self, w: u256) -> bool {
+        Buffer::write_word(self, offset: self.ptr.location.upcast(), w)
+    }
+}
+
+impl Write for StorageBuffer {
+    fn write_word(mut self, w: u256) -> bool {
+        Buffer::write_word(self, offset: 0, w)
+    }
+}
+
+impl Read for MemBuffer {
+    fn read_word(mut self) -> BufferResult<u256> {
+        Buffer::read_word(self, offset: 0)
+    }
+}
+
+impl Read for StorageBuffer {
+    fn read_word(mut self) -> BufferResult<u256> {
+        Buffer::read_word(self, offset: 0)
+    }
+}
